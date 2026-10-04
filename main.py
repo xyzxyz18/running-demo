@@ -1,4 +1,4 @@
-"""Local running-pose analysis CLI with selectable pose backends.
+"""Local running-pose analysis CLI using RTMPose.
 
 Usage:
     python main.py input/test.mp4 --output output
@@ -25,7 +25,7 @@ from biomechanics.angles import angle_series
 from biomechanics.foot_tracking import body_scale, leg_length
 from biomechanics.gait_events import FootEvents, detect_ankle_events
 from config import AnalysisConfig
-from pose.mediapipe_pose import LANDMARK_NAMES
+from pose.landmarks import LANDMARK_NAMES
 from pose.backends import MODEL_NAMES, create_estimator, validate_model
 from pose.smoothing import preprocess_landmarks
 from visualization.plots import create_report
@@ -40,7 +40,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="侧面跑步视频姿态与步态分析")
     parser.add_argument("video", type=Path, help="输入 .mp4/.mov/.avi 视频")
     parser.add_argument("--output", type=Path, default=Path("output"), help="输出目录")
-    parser.add_argument("--model", choices=MODEL_NAMES, default="mediapipe", help="姿态识别模型")
     return parser.parse_args()
 
 
@@ -51,7 +50,7 @@ def validate_video(path: Path) -> None:
         raise ValueError("仅支持 .mp4、.mov、.avi 视频")
 
 
-def extract_pose(video: Path, model: str = "mediapipe") -> Tuple[np.ndarray, float, int, int, np.ndarray]:
+def extract_pose(video: Path, model: str = "rtmpose") -> Tuple[np.ndarray, float, int, int, np.ndarray]:
     capture = cv2.VideoCapture(str(video))
     if not capture.isOpened():
         raise RuntimeError(f"OpenCV 无法打开视频: {video}")
@@ -234,7 +233,7 @@ def save_annotated_video(source: Path, destination: Path, points: np.ndarray, fp
     writer.release()
 
 
-def analyze(video: Path, output: Path, config: AnalysisConfig, model: str = "mediapipe") -> Dict[str, object]:
+def analyze(video: Path, output: Path, config: AnalysisConfig, model: str = "rtmpose") -> Dict[str, object]:
     validate_model(model)
     validate_video(video)
     output.mkdir(parents=True, exist_ok=True)
@@ -268,7 +267,7 @@ def analyze(video: Path, output: Path, config: AnalysisConfig, model: str = "med
     metrics.update({
         "source_video": str(video.resolve()), "fps": round(fps, 3),
         "pose_model": model, "pose_model_name": MODEL_NAMES[model],
-        "pose_keypoint_count": 33 if model == "mediapipe" else 17,
+        "pose_keypoint_count": 17,
         "video_aspect_ratio": round(aspect, 6),
         "frame_count": len(smooth), "pose_detection_rate": round(detected_ratio, 3),
         "left_foot_strikes": events["left"].strikes,
@@ -329,7 +328,7 @@ def create_browser_video(source: Path, destination: Path) -> None:
 def main() -> int:
     args = parse_args()
     try:
-        result = analyze(args.video, args.output, AnalysisConfig(), args.model)
+        result = analyze(args.video, args.output, AnalysisConfig())
     except (ValueError, RuntimeError) as exc:
         print(f"错误: {exc}", file=sys.stderr)
         return 1

@@ -67,7 +67,7 @@ def persist_job_metadata(job_id: str, job: Dict[str, object]) -> None:
         "filename": job.get("filename", "历史视频"),
         "source_filename": job.get("source_filename", ""),
         "created_at": job.get("created_at"),
-        "model": job.get("model", "mediapipe"),
+        "model": job.get("model", "rtmpose"),
     }
     path = JOBS_DIR / job_id / "job.json"
     with path.open("w", encoding="utf-8") as handle:
@@ -131,10 +131,10 @@ class RealtimePoseService:
         self.estimator = None
         self.model = None
 
-    def process(self, encoded: bytes, model: str = "mediapipe") -> Dict[str, object]:
+    def process(self, encoded: bytes, model: str = "rtmpose") -> Dict[str, object]:
         return self.executor.submit(self._process, encoded, model).result()
 
-    def _process(self, encoded: bytes, model: str = "mediapipe") -> Dict[str, object]:
+    def _process(self, encoded: bytes, model: str = "rtmpose") -> Dict[str, object]:
         validate_model(model)
         frame = cv2.imdecode(np.frombuffer(encoded, dtype=np.uint8), cv2.IMREAD_COLOR)
         if frame is None:
@@ -187,7 +187,7 @@ def run_analysis(job_id: str, source: Path, output_dir: Path) -> None:
     update_job(job_id, state="running", message="正在识别人体姿态并计算跑姿指标…")
     try:
         with jobs_lock:
-            model = str(jobs[job_id].get("model", "mediapipe"))
+            model = str(jobs[job_id].get("model", "rtmpose"))
         result = analyze(source, output_dir, AnalysisConfig(), model)
         artifacts = artifact_urls(job_id, output_dir, source.name)
         update_job(job_id, state="completed", message="分析完成", result=result, artifacts=artifacts)
@@ -231,7 +231,7 @@ def create_job():
         return jsonify(error="仅支持 MP4、MOV 或 AVI 视频"), 400
 
     try:
-        model = validate_model(request.form.get("model", "mediapipe"))
+        model = validate_model(request.form.get("model", "rtmpose"))
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 
@@ -281,7 +281,7 @@ def reanalyze_job(job_id: str):
     if not isinstance(payload, dict):
         return jsonify(error="请求必须是 JSON 对象"), 400
     try:
-        model = validate_model(payload.get("model", previous.get("model", "mediapipe")))
+        model = validate_model(payload.get("model", "rtmpose"))
     except (ValueError, TypeError) as exc:
         return jsonify(error=str(exc)), 400
 
@@ -348,7 +348,7 @@ def realtime_frame():
     if not encoded or len(encoded) > 3 * 1024 * 1024:
         return jsonify(error="摄像头画面无效或过大"), 400
     try:
-        return jsonify(realtime_pose.process(encoded, request.args.get("model", "mediapipe")))
+        return jsonify(realtime_pose.process(encoded, request.args.get("model", "rtmpose")))
     except (ValueError, RuntimeError) as exc:
         return jsonify(error=str(exc)), 400
 

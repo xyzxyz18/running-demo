@@ -70,6 +70,6 @@ def create_report(path: Path, times: np.ndarray, angles: Dict[str, np.ndarray],
         ax3.text(0.04, y, "• " + item, fontsize=10, va="top", wrap=True,
                  transform=ax3.transAxes)
         y -= 0.09
-    fig.suptitle("MediaPipe Running Pose Analysis", fontsize=20, fontweight="bold")
+    fig.suptitle("Running Pose Analysis", fontsize=20, fontweight="bold")
     fig.savefig(path, dpi=160)
     plt.close(fig)

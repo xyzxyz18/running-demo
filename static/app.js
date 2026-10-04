@@ -11,22 +11,6 @@ let analysisJob = null;
 let cameraStream = null;
 let cameraRunning = false;
 let cameraEpoch = 0;
-const MODEL_NAMES = { mediapipe: 'MediaPipe', rtmpose: 'RTMPose', movenet: 'MoveNet' };
-const selectedModel = () => $('#poseModel').value;
-$('#poseModel').addEventListener('change', () => {
-  $('#modelHint').textContent = selectedModel() === 'mediapipe'
-    ? '用于新视频、实时摄像头与历史重新分析'
-    : '17 点模型不提供脚跟/脚尖；首次使用需下载模型';
-  if (cameraRunning) {
-    liveSeries = { left: [], right: [] };
-    $('#liveLeftKnee').textContent = '—'; $('#liveRightKnee').textContent = '—';
-    $('#detectionValue').textContent = '正在加载模型…';
-    const canvas = $('#cameraPoseCanvas');
-    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-    drawChart($('#liveChart'), [], []);
-    liveLoop(++cameraEpoch);
-  }
-});
 let liveSeries = { left: [], right: [] };
 const footHighlight = { left: null, right: null };
 
@@ -68,7 +52,7 @@ $('#uploadForm').addEventListener('submit', async (event) => {
   $('#statusTitle').textContent = '正在上传';
   $('#statusMessage').textContent = '视频较大时需要稍等片刻…';
   try {
-    const body = new FormData(); body.append('video', file); body.append('model', selectedModel());
+    const body = new FormData(); body.append('video', file);
     const response = await fetch('/api/jobs', { method: 'POST', body });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || '上传失败');
@@ -82,7 +66,7 @@ async function pollJob(url) {
     const response = await fetch(url, { cache: 'no-store' });
     const job = await response.json();
     if (!response.ok) throw new Error(job.error || '无法读取分析状态');
-    $('#statusTitle').textContent = job.state === 'queued' ? '等待分析' : `${MODEL_NAMES[job.model] || 'MediaPipe'} 正在逐帧分析`;
+    $('#statusTitle').textContent = job.state === 'queued' ? '等待分析' : `RTMPose 正在逐帧分析`;
     $('#statusMessage').textContent = job.message;
     if (job.state === 'completed') return prepareWorkspace(job);
     if (job.state === 'failed') return showAnalysisError(job.message);
@@ -100,7 +84,7 @@ function showAnalysisError(message) {
 
 async function prepareWorkspace(job) {
   analysisJob = job;
-  $('#resultModel').textContent = `${MODEL_NAMES[job.model] || 'MediaPipe'} · POSE OVERLAY`;
+  $('#resultModel').textContent = `${job.model === 'rtmpose' ? 'RTMPose' : '历史分析'} · POSE OVERLAY`;
   if (!job.artifacts['timeline.json'] || !job.artifacts.source) return showLegacyResult(job);
   const response = await fetch(job.artifacts['timeline.json']);
   if (!response.ok) return showAnalysisError('无法加载逐帧姿态数据');
@@ -475,7 +459,7 @@ function createHistoryCard(job) {
   time.textContent = Number.isNaN(date.getTime()) ? '时间未知' : date.toLocaleString('zh-CN', { hour12: false });
   const title = document.createElement('h3'); title.textContent = job.filename || '历史视频';
   body.append(time, title);
-  const modelLabel = document.createElement('small'); modelLabel.textContent = MODEL_NAMES[job.model] || 'MediaPipe'; body.append(modelLabel);
+  const modelLabel = document.createElement('small'); modelLabel.textContent = job.model === 'rtmpose' ? 'RTMPose' : '历史分析'; body.append(modelLabel);
   if (job.result) {
     const stats = document.createElement('div'); stats.className = 'history-stats';
     const metrics = job.result.metrics;
@@ -501,7 +485,7 @@ async function openHistoryResult(jobId) {
 }
 
 async function reanalyzeHistory(jobId) {
-  const response = await fetch(`/api/jobs/${jobId}/reanalyze`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: selectedModel() }) });
+  const response = await fetch(`/api/jobs/${jobId}/reanalyze`, { method: 'POST' });
   const payload = await response.json();
   if (!response.ok) { alert(payload.error || '无法重新分析'); return; }
   switchMode('upload');
@@ -554,7 +538,6 @@ $('#cameraToggle').addEventListener('click', () => cameraRunning ? stopCamera() 
 
 async function liveLoop(epoch) {
   if (!cameraRunning || epoch !== cameraEpoch) return;
-  const model = selectedModel();
   const video = $('#cameraVideo');
   const capture = $('#captureCanvas');
   capture.width = 640; capture.height = Math.round(640 * video.videoHeight / video.videoWidth) || 360;
@@ -562,7 +545,7 @@ async function liveLoop(epoch) {
   try {
     const blob = await new Promise((resolve) => capture.toBlob(resolve, 'image/jpeg', .72));
     if (!cameraRunning || epoch !== cameraEpoch) return;
-    const response = await fetch(`/api/realtime/pose?model=${model}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+    const response = await fetch('/api/realtime/pose', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
     const pose = await response.json();
     if (!cameraRunning || epoch !== cameraEpoch) return;
     if (!response.ok) throw new Error(pose.error || '姿态分析失败');

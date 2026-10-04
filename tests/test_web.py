@@ -58,6 +58,7 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 202)
         job_id = response.get_json()["id"]
         self.assertEqual(self.client.get(f"/api/jobs/{job_id}").get_json()["state"], "queued")
+        self.assertEqual(web_app.jobs[job_id]['model'], 'rtmpose')
         history = self.client.get("/api/jobs").get_json()["jobs"]
         self.assertEqual([item["id"] for item in history], [job_id])
         self.assertTrue(any((Path(self.temp_dir.name) / job_id).glob("*.mp4")))
@@ -113,10 +114,21 @@ class WebAppTests(unittest.TestCase):
         web_app.jobs.clear()
         web_app.load_existing_jobs()
         self.assertEqual(web_app.jobs[job_id]['model'], 'rtmpose')
-        response = self.client.post(f'/api/jobs/{job_id}/reanalyze', json={'model': 'movenet'})
+        response = self.client.post(f'/api/jobs/{job_id}/reanalyze', json={})
         new_id = response.get_json()['id']
-        self.assertEqual(web_app.jobs[new_id]['model'], 'movenet')
+        self.assertEqual(web_app.jobs[new_id]['model'], 'rtmpose')
         self.assertEqual(web_app.jobs[job_id]['model'], 'rtmpose')
+
+    @patch.object(web_app.executor, 'submit')
+    def test_old_model_history_is_reanalyzed_with_rtmpose(self, submit):
+        created = self.client.post('/api/jobs', data={
+            'video': (io.BytesIO(b'video'), 'test.mp4')}).get_json()
+        old_id = created['id']
+        web_app.jobs[old_id]['model'] = 'mediapipe'
+        response = self.client.post(f'/api/jobs/{old_id}/reanalyze')
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(web_app.jobs[response.get_json()['id']]['model'], 'rtmpose')
+        self.assertEqual(web_app.jobs[old_id]['model'], 'mediapipe')
 
     @patch.object(web_app.executor, 'submit')
     def test_invalid_model_does_not_create_job(self, submit):
@@ -128,9 +140,9 @@ class WebAppTests(unittest.TestCase):
 
     @patch.object(web_app.realtime_pose, 'process', return_value={'detected': False})
     def test_realtime_forwards_selected_model(self, process):
-        response = self.client.post('/api/realtime/pose?model=movenet', data=b'jpeg', content_type='image/jpeg')
+        response = self.client.post('/api/realtime/pose', data=b'jpeg', content_type='image/jpeg')
         self.assertEqual(response.status_code, 200)
-        process.assert_called_once_with(b'jpeg', 'movenet')
+        process.assert_called_once_with(b'jpeg', 'rtmpose')
 
 
 if __name__ == "__main__":

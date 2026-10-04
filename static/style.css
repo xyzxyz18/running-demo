@@ -35,6 +35,4 @@ main { width:min(1440px,92vw); margin:0 auto; padding:0 0 80px; }
 @media (max-width:700px) { .foot-grid { grid-template-columns:1fr; }.foot-grid>div+div { border-left:0; border-top:1px solid var(--line); }.foot-grid canvas { height:230px; } }
 
 .model-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 0 0 24px; }
-.model-toolbar label { font-weight: 600; }
-.model-toolbar select { background: #17211e; color: #e5eee9; border: 1px solid #43524a; border-radius: 8px; padding: 10px 14px; font: inherit; }
 .model-toolbar small { color: #8a9990; }

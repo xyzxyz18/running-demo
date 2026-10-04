@@ -7,7 +7,7 @@ from typing import Dict, Iterable, Optional, Tuple
 import cv2
 import numpy as np
 
-from pose.mediapipe_pose import LANDMARK_NAMES
+from pose.landmarks import LANDMARK_NAMES
 
 
 CONNECTIONS = [

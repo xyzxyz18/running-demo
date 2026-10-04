@@ -8,7 +8,7 @@ import numpy as np
 def leg_length(points: np.ndarray, side: str, aspect: float,
                min_visibility: float = 0.45) -> float:
     """Median thigh plus median shank length in image-height units."""
-    from pose.mediapipe_pose import LANDMARK_NAMES
+    from pose.landmarks import LANDMARK_NAMES
     lookup = {name: i for i, name in enumerate(LANDMARK_NAMES)}
     lengths = []
     for first, second in (("hip", "knee"), ("knee", "ankle")):

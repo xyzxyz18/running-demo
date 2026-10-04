@@ -19,13 +19,8 @@
 
   <main>
     <div class="model-toolbar">
-      <label for="poseModel">姿态模型</label>
-      <select id="poseModel" name="model">
-        <option value="mediapipe">MediaPipe · 33 关键点</option>
-        <option value="rtmpose">RTMPose · 17 关键点</option>
-        <option value="movenet">MoveNet · 17 关键点</option>
-      </select>
-      <small id="modelHint">用于新视频、实时摄像头与历史重新分析</small>
+      <span>姿态模型：<b>RTMPose</b> · 17 关键点</span>
+      <small>使用左右脚踝生成轨迹</small>
     </div>
     <section id="uploadMode" class="mode-page">
       <div id="uploadHero" class="upload-layout">
@@ -33,7 +28,7 @@
           <p class="kicker">RUN FORM INTELLIGENCE</p>
           <h1>看见每一步<br><i>如何发生。</i></h1>
           <p>上传侧面跑步视频，通过姿态骨架与关节角度曲线，逐帧检查你的跑姿。</p>
-          <div class="feature-row"><span>三种姿态模型</span><span>逐帧同步</span><span>左右侧对比</span></div>
+          <div class="feature-row"><span>RTMPose 姿态识别</span><span>逐帧同步</span><span>左右侧对比</span></div>
         </div>
         <form id="uploadForm" class="upload-box">
           <label id="dropZone" class="drop-zone" for="videoInput">
@@ -75,7 +70,7 @@
           <div class="chart-row"><span>髋关节</span><canvas id="hipChart"></canvas></div>
         </article>
         <article id="footMotionPanel" class="surface foot-panel hidden">
-          <div class="panel-head"><div><b>脚踝运动平面轨迹</b><small>所有模型统一使用脚踝 · 着地间周期 · 相对双髋中点 · 左右共用坐标尺度</small></div><span id="stabilityStatus">—</span></div>
+          <div class="panel-head"><div><b>脚踝运动平面轨迹</b><small>使用左右脚踝 · 着地间周期 · 相对双髋中点 · 左右共用坐标尺度</small></div><span id="stabilityStatus">—</span></div>
           <div class="foot-grid">
             <div><div class="foot-heading"><b>左脚踝</b><span id="leftCycleCount">—</span></div><canvas id="leftFootChart" aria-label="左脚踝平面运动轨迹"></canvas><div id="leftCycleList" class="cycle-list"></div></div>
             <div><div class="foot-heading"><b>右脚踝</b><span id="rightCycleCount">—</span></div><canvas id="rightFootChart" aria-label="右脚踝平面运动轨迹"></canvas><div id="rightCycleList" class="cycle-list"></div></div>

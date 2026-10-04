@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from pose.mediapipe_pose import LANDMARK_NAMES
+from pose.landmarks import LANDMARK_NAMES
 
 
 SAMPLES_PER_CYCLE = 64
