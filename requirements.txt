@@ -8,3 +8,5 @@ gunicorn>=22,<24
 rtmlib==0.0.13
 onnxruntime>=1.16,<2
 tqdm>=4.65,<5
+# Offline temporal 3D lifting (CPU).
+torch>=2.2,<2.9

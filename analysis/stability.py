@@ -54,7 +54,9 @@ def _select_reference_cycles(cycles: List[dict], paths: Dict[int, np.ndarray]) -
 def foot_cycle_analysis(points: np.ndarray, strikes: Dict[str, List[int]],
                         scale: float, min_visibility: float = 0.45,
                         timestamps: Optional[np.ndarray] = None,
-                        aspect: float = 1.0) -> Dict[str, object]:
+                        aspect: float = 1.0,
+                        trajectories: Optional[dict] = None,
+                        validity: Optional[dict] = None) -> Dict[str, object]:
     """Return all same-side strike intervals, mean paths and per-cycle RMS errors.
 
     All pose backends track the left/right ankle only.
@@ -81,10 +83,18 @@ def foot_cycle_analysis(points: np.ndarray, strikes: Dict[str, List[int]],
     for side in ("left", "right"):
         landmark = f"{side}_ankle"
         ankle = points[:, INDEX[landmark], :]
-        relative = (ankle[:, :2] - pelvis) * [aspect, 1.0] / body_scale
-        relative[:, 1] *= -1  # Up is positive in the chart.
-        visible = (np.isfinite(relative).all(axis=1) &
-                   np.isfinite(ankle[:, 3]) & (ankle[:, 3] >= min_visibility))
+        if trajectories is None:
+            relative = (ankle[:, :2] - pelvis) * [aspect, 1.0] / body_scale
+            relative[:, 1] *= -1  # Up is positive in the chart.
+            visible = (np.isfinite(relative).all(axis=1) &
+                       np.isfinite(ankle[:, 3]) & (ankle[:, 3] >= min_visibility))
+        else:
+            relative = np.asarray(trajectories[side], dtype=float)
+            if relative.shape != (len(points), 2):
+                raise ValueError('校正轨迹必须为 (帧数, 2)')
+            visible = np.isfinite(relative).all(axis=1)
+            if validity is not None:
+                visible &= np.asarray(validity[side], dtype=bool)
         cycles = []
         paths = {}
         raw_paths = {}

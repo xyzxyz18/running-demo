@@ -21,6 +21,10 @@ import numpy as np
 from analysis.feedback import build_feedback
 from analysis.metrics import compute_metrics
 from analysis.stability import foot_cycle_analysis
+from analysis.view_correction import correct_trajectory, validate_calibration, LIMITATIONS
+from pose.lifting import lift_pose, H36M_NAMES
+from pose.skeleton3d import estimate_skeleton, LIMITATION as SKELETON3D_LIMITATION
+from pose.quality import temporal_support, smooth_supported
 from biomechanics.angles import angle_series
 from biomechanics.foot_tracking import body_scale, leg_length
 from biomechanics.gait_events import FootEvents, detect_ankle_events
@@ -40,6 +44,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="侧面跑步视频姿态与步态分析")
     parser.add_argument("video", type=Path, help="输入 .mp4/.mov/.avi 视频")
     parser.add_argument("--output", type=Path, default=Path("output"), help="输出目录")
+    parser.add_argument("--calibration", type=Path, help="站立标定 JSON")
+    parser.add_argument("--reference-video", type=Path, help="同机位站立参考视频")
     return parser.parse_args()
 
 
@@ -120,7 +126,9 @@ def save_landmarks(path: Path, raw: np.ndarray, smooth: np.ndarray, fps: float) 
 
 def save_timeline(path: Path, points: np.ndarray, fps: float, timestamps: np.ndarray,
                   angles: Dict[str, Dict[str, np.ndarray]],
-                  event_map: Dict[int, str], foot_motion: Dict[str, object]) -> None:
+                  event_map: Dict[int, str], foot_motion: Dict[str, object],
+                  correction: dict = None, corrected_motion: dict = None,
+                  plane_motion: dict = None) -> None:
     """Save compact frame data used by the synchronized browser player."""
     def series(values: np.ndarray) -> List[object]:
         return [round(float(value), 2) if np.isfinite(value) else None for value in values]
@@ -145,6 +153,12 @@ def save_timeline(path: Path, points: np.ndarray, fps: float, timestamps: np.nda
         "events": {str(frame): label for frame, label in event_map.items()},
         "foot_motion": foot_motion,
     }
+    if correction is not None:
+        payload["view_correction"] = correction
+    if corrected_motion is not None:
+        payload["foot_motion_corrected"] = corrected_motion
+    if plane_motion is not None:
+        payload['foot_motion_plane'] = plane_motion
     with path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
 
@@ -233,10 +247,15 @@ def save_annotated_video(source: Path, destination: Path, points: np.ndarray, fp
     writer.release()
 
 
-def analyze(video: Path, output: Path, config: AnalysisConfig, model: str = "rtmpose") -> Dict[str, object]:
+def analyze(video: Path, output: Path, config: AnalysisConfig, model: str = "rtmpose",
+            calibration: dict = None, reference_video: Path = None) -> Dict[str, object]:
+    calibration = validate_calibration(calibration)
     validate_model(model)
     validate_video(video)
     output.mkdir(parents=True, exist_ok=True)
+    (output / "pose3d.npz").unlink(missing_ok=True)
+    for name in ('skeleton3d.json', 'skeleton3d.npz'):
+        (output / name).unlink(missing_ok=True)
     raw, fps, width, height, timestamps = extract_pose(video, model)
     detected_ratio = float(np.isfinite(raw[:, :, 0]).any(axis=1).mean())
     if detected_ratio < 0.2:
@@ -282,6 +301,61 @@ def analyze(video: Path, output: Path, config: AnalysisConfig, model: str = "rtm
         smooth, {side: events[side].strikes for side in ("left", "right")},
         scale, config.min_visibility, timestamps, aspect,
     )
+    correction = {"status": "not_requested", "limitations": LIMITATIONS}
+    corrected_motion = None
+    pose3d = None
+    original_pose3d = None
+    skeleton_correction = None
+    if calibration is not None:
+        try:
+            print("正在估计三维骨架和侧面轨迹…", flush=True)
+            pose3d = lift_pose(raw, timestamps, aspect, config.min_visibility)
+            original_pose3d = pose3d.copy()
+            support, _ = temporal_support(raw, timestamps, config.min_visibility)
+            pose3d = smooth_supported(pose3d, timestamps, support)
+            ref_points = ref_pose = ref_times = None
+            ref_support = support
+            if calibration['source'] == 'reference':
+                if reference_video is None:
+                    raise ValueError('缺少站立参考视频')
+                ref_raw, ref_fps, ref_width, ref_height, ref_times = extract_pose(reference_video, model)
+                if abs(ref_width/ref_height - aspect) > .001:
+                    raise ValueError('参考视频与跑步视频的画面比例必须相同，且相机不能变焦或移动')
+                ref_points = preprocess_landmarks(ref_raw, ref_fps, config.min_visibility,
+                                                 config.smoothing_window_seconds)
+                ref_pose = lift_pose(ref_raw, ref_times, aspect, config.min_visibility)
+                ref_support, _ = temporal_support(ref_raw, ref_times, config.min_visibility)
+                ref_pose = smooth_supported(ref_pose, ref_times, ref_support)
+            corrected = correct_trajectory(smooth, pose3d, timestamps, aspect, calibration,
+                                           ref_points, ref_pose, ref_times, config.min_visibility,
+                                           temporal_valid=support, reference_valid=ref_support)
+            skeleton_correction = corrected
+            corrected_motion = foot_cycle_analysis(smooth,
+                {side: events[side].strikes for side in ('left','right')}, 1,
+                config.min_visibility, timestamps, aspect,
+                trajectories=corrected['trajectories'], validity=corrected['validity'])
+            corrected_motion['method'] = ('三维脚踝投影至固定前后—上下坐标系；'
+                '原点为双髋中点沿估计竖直方向在地面的投影；以三维腿长归一化。' + LIMITATIONS)
+            corrected_motion['coordinate_system'] = 'estimated_sagittal_ground'
+            correction = corrected['metadata']
+            np.savez_compressed(output/'pose3d.npz',
+                joint_names=np.asarray(H36M_NAMES), timestamps=timestamps,
+                camera_pose_pelvis_relative_m=corrected['pose3d_m'],
+                ground_origins_pelvis_relative_m=corrected['ground_origins_pelvis_relative_m'],
+                hip_height_m=corrected['hip_height_m'],
+                left_trajectory=corrected['trajectories']['left'],
+                right_trajectory=corrected['trajectories']['right'],
+                left_valid=corrected['validity']['left'], right_valid=corrected['validity']['right'])
+            metrics['corrected_path_dispersion_leg_ratio'] = corrected_motion['overall_dispersion_body_ratio']
+            metrics['corrected_side_mean_gap_leg_ratio'] = corrected_motion['side_mean_gap_body_ratio']
+        except (RuntimeError, ValueError, OSError, ImportError) as exc:
+            corrected_motion = None
+            skeleton_correction = None
+            (output / 'pose3d.npz').unlink(missing_ok=True)
+            correction = {"status": "unavailable", "reason": str(exc),
+                          "calibration": calibration, "limitations": LIMITATIONS}
+    (output/'view_correction.json').write_text(json.dumps(correction, ensure_ascii=False,
+                                                         indent=2, allow_nan=False), 'utf-8')
     metrics["foot_path_dispersion_body_ratio"] = foot_motion["overall_dispersion_body_ratio"]
     metrics["left_right_mean_path_gap_body_ratio"] = foot_motion["side_mean_gap_body_ratio"]
     foot_summary, report = summarize_foot_motion(foot_motion, metrics, feedback)
@@ -289,6 +363,37 @@ def analyze(video: Path, output: Path, config: AnalysisConfig, model: str = "rtm
               "foot_motion": foot_summary,
               "report": report,
               "disclaimer": "二维视频估算结果，仅供运动观察，不用于医疗诊断。"}
+    result['view_correction'] = correction
+    plane_motion = None
+    try:
+        print('正在使用 RTMPose 二维序列估计 VideoPose3D 三维骨架…', flush=True)
+        result['skeleton3d'] = estimate_skeleton(video, raw, timestamps, output, pose3d=pose3d,
+                                               correction=skeleton_correction,
+                                               correction_metadata=correction,
+                                               original_pose=original_pose3d)
+        if result['skeleton3d'].get('leg_plane_constraint',{}).get('status')=='available':
+            with np.load(output/'skeleton3d.npz') as data:
+                projected=data['plane_side_keypoints']
+            paths={side:projected[:,joint] for side,joint in [('left',6),('right',3)]}
+            masks={side:np.isfinite(path).all(axis=1) for side,path in paths.items()}
+            plane_motion=foot_cycle_analysis(smooth,
+                {side:events[side].strikes for side in ('left','right')},1,
+                config.min_visibility,timestamps,aspect,trajectories=paths,validity=masks)
+            plane_motion['coordinate_system']='hip_plane_pelvis_relative'
+            plane_motion['method']='双髋连线法向活动平面侧面投影；髋中心原点；腿长尺度；周期边界来自二维步态事件；非地面标定'
+            result['foot_motion_plane'],_=summarize_foot_motion(plane_motion,metrics,feedback)
+    except Exception as exc:  # Optional 3D playback must not discard valid 2D results.
+        for name in ('skeleton3d.json', 'skeleton3d.npz', 'runningpose_raw.npz'):
+            (output / name).unlink(missing_ok=True)
+        result['skeleton3d'] = dict(status='unavailable', reason=str(exc),
+                                    limitations=SKELETON3D_LIMITATION)
+        print(f'三维骨架不可用，继续保存二维分析：{exc}', flush=True)
+    if corrected_motion is not None:
+        result['foot_motion_corrected'], _ = summarize_foot_motion(corrected_motion, metrics, feedback)
+        report['observations'].append(f"估计偏离正侧面 {correction['deviation_from_side_degrees']}°；侧面轨迹以髋中点的地面投影为原点。")
+    elif correction['status'] == 'unavailable':
+        report['observations'].append('侧面校正不可用：' + correction['reason'])
+    report['observations'].append('膝/髋角度为二维估计。' + (LIMITATIONS if calibration else ''))
     save_landmarks(output / "landmarks.csv", raw, smooth, fps)
     with (output / "metrics.json").open("w", encoding="utf-8") as handle:
         json.dump(result, handle, ensure_ascii=False, indent=2, allow_nan=False)
@@ -299,7 +404,7 @@ def analyze(video: Path, output: Path, config: AnalysisConfig, model: str = "rtm
             event_frames[i] = f"{side.title()} foot strike"
         for i in events[side].toe_offs:
             event_frames[i] = f"{side.title()} toe-off"
-    save_timeline(output / "timeline.json", smooth, fps, timestamps, angles, event_frames, foot_motion)
+    save_timeline(output / "timeline.json", smooth, fps, timestamps, angles, event_frames, foot_motion, correction, corrected_motion, plane_motion)
     save_annotated_video(video, output / "annotated.mp4", smooth, fps, width, height,
                          angles, event_frames, metrics, config)
     times = timestamps
@@ -310,7 +415,7 @@ def analyze(video: Path, output: Path, config: AnalysisConfig, model: str = "rtm
         {"left_strikes": events["left"].strikes,
          "right_strikes": events["right"].strikes}, metrics, feedback,
     )
-    create_pdf_report(output / "report.pdf", result, times, angles, clearances, foot_motion)
+    create_pdf_report(output / "report.pdf", result, times, angles, clearances, foot_motion, corrected_motion)
     create_browser_video(video, output / "player.mp4")
     return result
 
@@ -328,7 +433,9 @@ def create_browser_video(source: Path, destination: Path) -> None:
 def main() -> int:
     args = parse_args()
     try:
-        result = analyze(args.video, args.output, AnalysisConfig())
+        calibration = json.loads(args.calibration.read_text('utf-8')) if args.calibration else None
+        result = analyze(args.video, args.output, AnalysisConfig(), calibration=calibration,
+                         reference_video=args.reference_video)
     except (ValueError, RuntimeError) as exc:
         print(f"错误: {exc}", file=sys.stderr)
         return 1

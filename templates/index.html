@@ -20,15 +20,15 @@
   <main>
     <div class="model-toolbar">
       <span>姿态模型：<b>RTMPose</b> · 17 关键点</span>
-      <small>使用左右脚踝生成轨迹</small>
+      <small>左右脚踝轨迹 · VideoPose3D 三维骨架</small>
     </div>
     <section id="uploadMode" class="mode-page">
       <div id="uploadHero" class="upload-layout">
         <div class="headline">
           <p class="kicker">RUN FORM INTELLIGENCE</p>
           <h1>看见每一步<br><i>如何发生。</i></h1>
-          <p>上传侧面跑步视频，通过姿态骨架与关节角度曲线，逐帧检查你的跑姿。</p>
-          <div class="feature-row"><span>RTMPose 姿态识别</span><span>逐帧同步</span><span>左右侧对比</span></div>
+          <p>上传固定机位跑步视频，通过姿态骨架与关节角度曲线，逐帧检查你的跑姿。</p>
+          <div class="feature-row"><span>RTMPose 姿态识别</span><span>三维骨架回放</span><span>左右侧对比</span></div>
         </div>
         <form id="uploadForm" class="upload-box">
           <label id="dropZone" class="drop-zone" for="videoInput">
@@ -37,8 +37,30 @@
             <strong id="fileName">选择或拖入跑步视频</strong>
             <small>MP4 / MOV / AVI · 最大 2 GB</small>
           </label>
+          <details id="calibrationPanel" class="calibration-panel">
+            <summary>斜视角校正 · 身高与站立参考</summary>
+            <label class="calibration-enable"><input id="correctionEnabled" type="checkbox">启用估计的侧面轨迹</label>
+            <p>相机固定、跑台水平且不变焦。在跑步位置直立站稳约 3 秒，面向跑步方向。可使用视频中的站立片段或同机位独立短视频。</p>
+            <div class="calibration-fields">
+              <label>身高（cm）<input id="heightCm" type="number" min="100" max="230" value="170" step="0.1"></label>
+              <label>跑步方向<select id="runningFacing"><option value="right">画面向右</option><option value="left">画面向左</option></select></label>
+              <label>参考来源<select id="referenceSource"><option value="video">当前跑步视频的站立片段</option><option value="reference">独立站立参考视频</option></select></label>
+            </div>
+            <label id="referenceFileLabel" class="hidden">上传站立短视频<input id="referenceInput" type="file" accept=".mp4,.mov,.avi"></label>
+            <video id="calibrationVideo" controls playsinline preload="metadata"></video>
+            <div class="calibration-fields">
+              <label>站立开始（秒）<input id="referenceStart" type="number" min="0" step="0.01" value="0"></label>
+              <label>站立结束（秒）<input id="referenceEnd" type="number" min="1" step="0.01" value="3"></label>
+            </div>
+            <div class="calibration-actions"><button id="setReferenceStart" type="button">当前画面为开始</button><button id="setReferenceEnd" type="button">当前画面为结束</button><button id="captureReference" type="button">用当前画面标记</button></div>
+            <p id="calibrationInstructions">暂停在站立片段中的清晰画面，依次标记头顶与双脚支撑位置的中点（跑台表面）。</p>
+            <canvas id="calibrationCanvas" aria-label="站立标定图像"></canvas>
+            <div class="calibration-actions"><button id="markHead" type="button">标记头顶</button><button id="markGround" type="button">标记脚底支撑点</button><button id="clearMarkers" type="button">清除标记</button></div>
+            <p id="calibrationStatus" role="status">尚未标记</p>
+            <small>身高仅提供参考；站立骨架、地面与侧面轨迹均为单目近似估计。实时摄像头仍使用二维分析。</small>
+          </details>
           <button id="analyzeButton" class="action-button" type="submit" disabled>开始分析 <span>→</span></button>
-          <p class="privacy-note">视频在当前服务中处理并保存分析历史</p>
+          <p class="privacy-note">自动生成三维骨架，无需站立参考。首次使用会下载三维模型，分析时间会增加。</p>
         </form>
       </div>
 
@@ -49,7 +71,7 @@
       <section id="analysisWorkspace" class="workspace hidden">
         <div class="workspace-title"><div><p class="kicker">MOTION REVIEW</p><h2>动作回放</h2></div><div class="workspace-actions"><a id="exportPdfButton" class="pdf-export hidden" download="跑姿分析报告.pdf">导出 PDF 报告 ↓</a><button id="newVideoButton" class="ghost-button">换一个视频</button></div></div>
         <article id="legacyReportPanel" class="surface legacy-report hidden"><div class="panel-head"><b>历史分析报告</b><span>旧版结果</span></div><img id="legacyReportImage" alt="历史分析报告"></article>
-        <div id="reviewGrid" class="review-grid">
+        <div id="reviewGrid" class="review-grid comparison-grid">
           <article class="surface player-panel">
             <div class="panel-head"><b id="resultModel">POSE OVERLAY</b><span id="frameLabel">FRAME 0</span></div>
             <div id="videoStage" class="media-stage">
@@ -62,15 +84,32 @@
               <div><small>当前事件</small><b id="eventValue">—</b></div>
             </div>
           </article>
-          <aside id="metricsPanel" class="metric-stack"></aside>
+        <article id="skeleton3dPanel" class="surface skeleton3d-panel hidden">
+          <div class="panel-head"><div><b>跑步三维骨架</b><small id="skeleton3dStatus" role="status">正在读取三维骨架…</small></div><span id="skeleton3dFrame">3D</span></div>
+          <canvas id="skeleton3dCanvas" aria-label="可拖动旋转和缩放的跑步三维骨架" tabindex="0"></canvas>
+          <div class="skeleton3d-toolbar"><button type="button" data-view3d="orbit">立体视角</button><button type="button" data-view3d="front">正面视角</button><button type="button" data-view3d="side">侧面视角</button><button type="button" id="reset3d">重置视角</button><div class="legend"><span><i class="lime-bg"></i>左侧</span><span><i class="cyan-bg"></i>右侧</span></div></div>
+          <div class="skeleton3d-toolbar"><label><input id="legPlaneEnabled" type="checkbox">双髋连线 · 原位平面约束</label><label><input id="ankleTrailsEnabled" type="checkbox" checked>三维踝轨迹</label><button id="toggleOriginal3d" type="button">查看原始相机朝向</button><button id="groundExample3d" type="button">地面与垂直方向案例</button><button id="exportSkeleton3d" type="button">导出当前3D图片</button><small id="displayAlignmentStatus"></small></div>
+          <p class="foot-note" id="legPlaneStatus">双髋连线法向 · 左右髋原位平面约束</p>
+          <p class="foot-note">与旁边视频同步播放和定位。拖动旋转，滚轮或双指缩放，方向键旋转，+/− 缩放。三维骨架以髋中心为原点；未标定时显示旋转仅供观察，不恢复真实深度或地面。</p>
+        </article>
         </div>
+        <aside id="metricsPanel" class="metric-stack review-metrics"></aside>
+        <article id="sagittal3dPanel" class="surface foot-panel hidden">
+          <div class="panel-head"><div><b>三维骨架 · 侧面投影轨迹</b><small id="sagittal3dStatus" role="status"></small></div><button id="flipSagittal3d" type="button" class="ghost-button" hidden>反转前后方向</button></div>
+          <div class="foot-grid">
+            <div><div class="foot-heading"><b>左脚踝 · 三维侧面投影</b><span>◇ 左髋关节　＋ 髋中心</span></div><canvas id="leftSagittal3d" aria-label="三维左脚踝侧面轨迹及左髋关节位置"></canvas></div>
+            <div><div class="foot-heading"><b>右脚踝 · 三维侧面投影</b><span>◇ 右髋关节　＋ 髋中心</span></div><canvas id="rightSagittal3d" aria-label="三维右脚踝侧面轨迹及右髋关节位置"></canvas></div>
+          </div>
+          <p class="foot-note">开启双髋约束时显示活动平面侧面轨迹，以髋中心为原点；关闭约束后可查看站立标定轨迹，以髋中心正下方估计地面为原点。未提供站立标定时不显示地面校正曲线。缺失采样不连线；两种曲线都不是实际三维测量。</p>
+        </article>
         <article id="reviewCharts" class="surface chart-panel">
-          <div class="panel-head"><div><b>关节角度</b><small>拖动视频进度条或点击曲线定位</small></div><div class="legend"><span><i class="lime-bg"></i>左侧</span><span><i class="cyan-bg"></i>右侧</span></div></div>
+          <div class="panel-head"><div><b>关节角度</b><small>二维角度估计 · 拖动视频进度条或点击曲线定位</small></div><div class="legend"><span><i class="lime-bg"></i>左侧</span><span><i class="cyan-bg"></i>右侧</span></div></div>
           <div class="chart-row"><span>膝关节</span><canvas id="kneeChart"></canvas></div>
           <div class="chart-row"><span>髋关节</span><canvas id="hipChart"></canvas></div>
         </article>
         <article id="footMotionPanel" class="surface foot-panel hidden">
-          <div class="panel-head"><div><b>脚踝运动平面轨迹</b><small>使用左右脚踝 · 着地间周期 · 相对双髋中点 · 左右共用坐标尺度</small></div><span id="stabilityStatus">—</span></div>
+          <div class="panel-head"><div><b>脚踝运动平面轨迹</b><small id="footCoordinateNote">原始二维轨迹 · 相对双髋中点 · 腿长归一化</small></div><span id="stabilityStatus">—</span></div>
+          <div class="trajectory-toolbar"><label for="footMotionMode">轨迹坐标</label><select id="footMotionMode"><option value="original">原始二维轨迹</option><option value="plane" disabled>双髋平面约束 · 侧面轨迹</option><option value="corrected" disabled>站立标定 · 侧面轨迹</option></select><p id="correctionStatus" role="status"></p></div>
           <div class="foot-grid">
             <div><div class="foot-heading"><b>左脚踝</b><span id="leftCycleCount">—</span></div><canvas id="leftFootChart" aria-label="左脚踝平面运动轨迹"></canvas><div id="leftCycleList" class="cycle-list"></div></div>
             <div><div class="foot-heading"><b>右脚踝</b><span id="rightCycleCount">—</span></div><canvas id="rightFootChart" aria-label="右脚踝平面运动轨迹"></canvas><div id="rightCycleList" class="cycle-list"></div></div>
@@ -122,6 +161,9 @@
       <div id="historyEmpty" class="history-empty hidden"><b>还没有分析记录</b><p>完成第一次视频分析后，结果会出现在这里。</p></div>
     </section>
   </main>
+  <script src="{{ url_for('static', filename='sagittal3d.js') }}"></script>
+  <script src="{{ url_for('static', filename='skeleton3d.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='calibration.js') }}"></script>
 </body>
 </html>

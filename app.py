@@ -19,6 +19,7 @@ import numpy as np
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory, url_for
 
 from config import AnalysisConfig
+from analysis.view_correction import validate_calibration
 from main import analyze
 from pose.backends import create_estimator, validate_model
 
@@ -26,7 +27,7 @@ from pose.backends import create_estimator, validate_model
 BASE_DIR = Path(__file__).resolve().parent
 JOBS_DIR = Path(os.environ.get("PACE_DATA_DIR", str(BASE_DIR / "output"))).resolve() / "jobs"
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi"}
-ARTIFACTS = {"annotated.mp4", "player.mp4", "landmarks.csv", "metrics.json", "report.png", "report.pdf", "report.html", "timeline.json"}
+ARTIFACTS = {"annotated.mp4", "player.mp4", "landmarks.csv", "metrics.json", "report.png", "report.pdf", "report.html", "timeline.json", "view_correction.json", "pose3d.npz", "skeleton3d.json", "skeleton3d.npz", "runningpose_raw.npz"}
 
 app = Flask(__name__)
 
@@ -58,6 +59,10 @@ def artifact_urls(job_id: str, output_dir: Path, source_name: str = "") -> Dict[
     }
     if source_name and (output_dir / source_name).is_file():
         artifacts["source"] = f"/results/{job_id}/{source_name}"
+    for reference in output_dir.glob("reference.*"):
+        if reference.suffix.lower() in ALLOWED_EXTENSIONS:
+            artifacts["reference"] = f"/results/{job_id}/{reference.name}"
+            break
     return artifacts
 
 
@@ -68,6 +73,8 @@ def persist_job_metadata(job_id: str, job: Dict[str, object]) -> None:
         "source_filename": job.get("source_filename", ""),
         "created_at": job.get("created_at"),
         "model": job.get("model", "rtmpose"),
+        "calibration": job.get("calibration"),
+        "reference_filename": job.get("reference_filename", ""),
     }
     path = JOBS_DIR / job_id / "job.json"
     with path.open("w", encoding="utf-8") as handle:
@@ -111,6 +118,8 @@ def load_existing_jobs() -> None:
         job = {
             "id": output_dir.name,
             "model": metadata.get("model") or (result or {}).get("metrics", {}).get("pose_model", "mediapipe"),
+            "calibration": metadata.get("calibration"),
+            "reference_filename": metadata.get("reference_filename", ""),
             "filename": metadata.get("filename") or fallback_name,
             "source_filename": source_name,
             "created_at": created_at,
@@ -184,11 +193,14 @@ def update_job(job_id: str, **values: object) -> None:
 
 
 def run_analysis(job_id: str, source: Path, output_dir: Path) -> None:
-    update_job(job_id, state="running", message="正在识别人体姿态并计算跑姿指标…")
+    update_job(job_id, state="running", message="正在识别人体姿态、估计三维骨架并计算跑姿指标；首次三维分析需要下载模型…")
     try:
         with jobs_lock:
             model = str(jobs[job_id].get("model", "rtmpose"))
-        result = analyze(source, output_dir, AnalysisConfig(), model)
+            calibration = jobs[job_id].get('calibration')
+            reference_name = jobs[job_id].get('reference_filename')
+        reference = output_dir / reference_name if reference_name else None
+        result = analyze(source, output_dir, AnalysisConfig(), model, calibration, reference)
         artifacts = artifact_urls(job_id, output_dir, source.name)
         update_job(job_id, state="completed", message="分析完成", result=result, artifacts=artifacts)
     except Exception as exc:  # Turn pipeline errors into an actionable UI message.
@@ -232,6 +244,12 @@ def create_job():
 
     try:
         model = validate_model(request.form.get("model", "rtmpose"))
+        calibration = validate_calibration(json.loads(request.form.get('calibration', 'null')))
+        reference = request.files.get('reference_video')
+        if reference and Path(reference.filename).suffix.lower() not in ALLOWED_EXTENSIONS:
+            raise ValueError('站立参考视频仅支持 MP4、MOV 或 AVI')
+        if calibration and calibration['source'] == 'reference' and not reference:
+            raise ValueError('请选择站立参考视频')
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 
@@ -240,10 +258,16 @@ def create_job():
     output_dir.mkdir(parents=True, exist_ok=False)
     source = output_dir / f"source{suffix}"
     upload.save(source)
+    reference_name = ''
+    if calibration and calibration['source'] == 'reference':
+        reference_name = 'reference' + Path(reference.filename).suffix.lower()
+        reference.save(output_dir / reference_name)
     with jobs_lock:
         jobs[job_id] = {
             "id": job_id,
             "model": model,
+            "calibration": calibration,
+            "reference_filename": reference_name,
             "state": "queued",
             "message": "视频已上传，等待开始分析…",
             "filename": upload.filename,
@@ -277,11 +301,21 @@ def reanalyze_job(job_id: str):
     if source is None:
         return jsonify(error="原视频已不存在，无法重新分析"), 409
 
-    payload = request.get_json(silent=True) or {}
+    payload = dict(request.form) if request.form else request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         return jsonify(error="请求必须是 JSON 对象"), 400
     try:
         model = validate_model(payload.get("model", "rtmpose"))
+        setting = payload.get('calibration', previous.get('calibration'))
+        if isinstance(setting, str):
+            setting = json.loads(setting)
+        calibration = validate_calibration(setting)
+        reference = request.files.get('reference_video')
+        if reference and Path(reference.filename).suffix.lower() not in ALLOWED_EXTENSIONS:
+            raise ValueError('站立参考视频仅支持 MP4、MOV 或 AVI')
+        previous_reference = JOBS_DIR / job_id / str(previous.get('reference_filename') or 'reference.mp4')
+        if calibration and calibration['source'] == 'reference' and not reference and not previous_reference.is_file():
+            raise ValueError('站立参考视频已不存在，请重新上传')
     except (ValueError, TypeError) as exc:
         return jsonify(error=str(exc)), 400
 
@@ -290,9 +324,19 @@ def reanalyze_job(job_id: str):
     output_dir.mkdir(parents=True, exist_ok=False)
     copied_source = output_dir / f"source{source.suffix.lower()}"
     shutil.copy2(source, copied_source)
+    reference_name = ''
+    if calibration and calibration['source'] == 'reference':
+        suffix = Path(reference.filename).suffix.lower() if reference else previous_reference.suffix.lower()
+        reference_name = 'reference' + suffix
+        if reference:
+            reference.save(output_dir / reference_name)
+        else:
+            shutil.copy2(previous_reference, output_dir / reference_name)
     new_job = {
         "id": new_id,
         "model": model,
+        "calibration": calibration,
+        "reference_filename": reference_name,
         "state": "queued",
         "message": "已加入重新分析队列…",
         "filename": previous.get("filename", source.name),
@@ -334,7 +378,7 @@ def artifact(job_id: str, filename: str):
         job = jobs.get(job_id)
         if job is None:
             abort(404)
-        allowed = filename in ARTIFACTS or filename == job.get("source_filename")
+        allowed = filename in ARTIFACTS or filename in {job.get("source_filename"), job.get("reference_filename")}
     if not allowed:
         abort(404)
     return send_from_directory(JOBS_DIR / job_id, filename, as_attachment=False)

@@ -26,6 +26,7 @@ $$('.mode-button').forEach((button) => button.addEventListener('click', () => sw
 
 function showSelectedFile(file) {
   if (!file) return;
+  window.Calibration?.setMainFile(file);
   $('#fileName').textContent = file.name;
   $('#analyzeButton').disabled = false;
 }
@@ -46,14 +47,17 @@ $('#dropZone').addEventListener('drop', (event) => {
 $('#uploadForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const file = $('#videoInput').files[0];
-  if (!file) return;
+  if (!file && !window.Calibration?.historyId) return;
   $('#analyzeButton').disabled = true;
   $('#statusCard').classList.remove('hidden', 'error');
   $('#statusTitle').textContent = '正在上传';
   $('#statusMessage').textContent = '视频较大时需要稍等片刻…';
   try {
-    const body = new FormData(); body.append('video', file);
-    const response = await fetch('/api/jobs', { method: 'POST', body });
+    const body = new FormData();
+    if (file) body.append('video', file);
+    window.Calibration.addTo(body);
+    const url = window.Calibration.historyId ? `/api/jobs/${window.Calibration.historyId}/reanalyze` : '/api/jobs';
+    const response = await fetch(url, { method: 'POST', body });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || '上传失败');
     $('#uploadHero').classList.add('hidden');
@@ -84,11 +88,13 @@ function showAnalysisError(message) {
 
 async function prepareWorkspace(job) {
   analysisJob = job;
+  window.Skeleton3D.load(job);
   $('#resultModel').textContent = `${job.model === 'rtmpose' ? 'RTMPose' : '历史分析'} · POSE OVERLAY`;
   if (!job.artifacts['timeline.json'] || !job.artifacts.source) return showLegacyResult(job);
   const response = await fetch(job.artifacts['timeline.json']);
   if (!response.ok) return showAnalysisError('无法加载逐帧姿态数据');
   timeline = await response.json();
+  setupCorrectionView(job.result);
   $('#statusCard').classList.add('hidden');
   $('#analysisWorkspace').classList.remove('hidden');
   $('#reviewGrid').classList.remove('hidden');
@@ -99,7 +105,7 @@ async function prepareWorkspace(job) {
   video.load();
   renderMetrics(job.result.metrics);
   renderFeedback(job);
-  renderFootMotion(job.result.foot_motion);
+  renderFootMotion(currentFootSummary());
   renderReport(job.result);
   drawAllReviewCharts(0);
   $('#analysisWorkspace').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -107,6 +113,7 @@ async function prepareWorkspace(job) {
 
 function showLegacyResult(job) {
   analysisJob = job; timeline = null;
+  window.Skeleton3D.load(job);
   $('#statusCard').classList.add('hidden');
   $('#analysisWorkspace').classList.remove('hidden');
   $('#reviewGrid').classList.add('hidden');
@@ -145,7 +152,7 @@ function renderFeedback(job) {
   });
   $('#disclaimer').textContent = job.result.disclaimer;
   const downloads = $('#downloadLinks'); downloads.replaceChildren();
-  const files = [['report.pdf', 'PDF 报告'], ['player.mp4', '可播放视频'], ['annotated.mp4', '标注视频'], ['metrics.json', '指标 JSON'], ['landmarks.csv', '关键点 CSV'], ['report.png', '分析图'], ['report.html', '简要报告']];
+  const files = [['report.pdf', 'PDF 报告'], ['player.mp4', '可播放视频'], ['annotated.mp4', '标注视频'], ['metrics.json', '指标 JSON'], ['landmarks.csv', '关键点 CSV'], ['report.png', '分析图'], ['report.html', '简要报告'], ['view_correction.json', '视角标定 JSON'], ['pose3d.npz', '侧面校正三维数据 NPZ'], ['skeleton3d.json', '三维骨架 JSON'], ['skeleton3d.npz', '三维骨架 NPZ'], ['runningpose_raw.npz', 'RunningPose 原始预测 NPZ']];
   files.forEach(([name, label]) => {
     if (!job.artifacts[name]) return;
     const link = document.createElement('a'); link.href = job.artifacts[name]; link.download = name;
@@ -153,16 +160,45 @@ function renderFeedback(job) {
   });
 }
 
+function currentFootMotion() {
+  if($('#footMotionMode').value==='plane')return timeline?.foot_motion_plane;
+  return $('#footMotionMode').value === 'corrected' ? timeline?.foot_motion_corrected : timeline?.foot_motion;
+}
+function currentFootSummary() {
+  if($('#footMotionMode').value==='plane')return analysisJob?.result?.foot_motion_plane;
+  return $('#footMotionMode').value === 'corrected' ? analysisJob?.result?.foot_motion_corrected : analysisJob?.result?.foot_motion;
+}
+function setupCorrectionView(result) {
+  const c = result.view_correction;
+  const available = c?.status === 'available' && timeline?.foot_motion_corrected;
+  $('#footMotionMode option[value="corrected"]').disabled = !available;
+  const plane=!!timeline?.foot_motion_plane&&!!result.foot_motion_plane;
+  $('#footMotionMode option[value="plane"]').disabled=!plane;
+  $('#footMotionMode').value = plane ? 'plane' : available ? 'corrected' : 'original';
+  $('#correctionStatus').textContent = available
+    ? `估计偏离正侧面 ${c.deviation_from_side_degrees}° · 三维有效帧 ${Math.round(c.valid_frame_ratio*100)}% · 单目近似`
+    : plane?'可查看腿部活动平面侧面轨迹；髋中心原点，非真实离地高度':c?.status === 'unavailable' ? `校正不可用：${c.reason}` : '未提供站立标定，显示原始二维轨迹';
+}
+$('#footMotionMode').addEventListener('change', () => {
+  footHighlight.left = footHighlight.right = null;
+  renderFootMotion(currentFootSummary());
+});
 function renderFootMotion(motion) {
-  const available = motion?.version === 6 && timeline?.foot_motion?.version === 6;
+  const available = motion?.version === 6 && currentFootMotion()?.version === 6;
   $('#footMotionPanel').classList.toggle('hidden', !available);
   if (!available) return;
+  const corrected = $('#footMotionMode').value === 'corrected';
+  $('#footCoordinateNote').textContent = $('#footMotionMode').value==='plane'
+    ? '双髋平面约束侧面轨迹 · 髋中心原点 · 三维腿长尺度 · 周期划分沿用二维检测 · 非地面高度'
+    : corrected
+    ? '估计的侧面轨迹 · 髋中点地面投影为原点 · 三维腿长归一化'
+    : '原始二维轨迹 · 髋中点为原点 · 二维腿长归一化';
   $('#stabilityStatus').textContent = `${motion.assessment} · 总偏差 ${motion.overall_dispersion_body_ratio ?? '—'}`;
   ['left', 'right'].forEach((side) => {
     const dispersion = motion[side].dispersion_body_ratio;
     $(`#${side}CycleCount`).textContent = `${motion[side].cycle_count} 周期 / ${motion[side].included_count} 纳入平均 · 侧内偏差 ${dispersion ?? '—'}`;
     const list = $(`#${side}CycleList`); list.replaceChildren();
-    timeline.foot_motion[side].cycles.forEach((cycle) => {
+    currentFootMotion()[side].cycles.forEach((cycle) => {
       const item = document.createElement('button'); item.type = 'button'; item.className = 'cycle-item';
       item.dataset.cycle = cycle.number;
       if (!cycle.path) item.classList.add('unavailable');
@@ -192,7 +228,7 @@ function renderFootMotion(motion) {
 }
 
 function drawFootMotionCharts(frame = frameForTime($('#analysisVideo').currentTime, $('#analysisVideo').duration)) {
-  const motion = timeline?.foot_motion;
+  const motion = currentFootMotion();
   if (motion?.version !== 6 || $('#footMotionPanel').classList.contains('hidden')) return;
   const referencePaths = ['left', 'right'].flatMap((side) => [
     ...motion[side].cycles.filter((cycle) => cycle.included_in_mean).map((cycle) => cycle.path?.filter((_, index) => {
@@ -207,6 +243,10 @@ function drawFootMotionCharts(frame = frameForTime($('#analysisVideo').currentTi
     bounds.minX = Math.min(bounds.minX, x); bounds.maxX = Math.max(bounds.maxX, x);
     bounds.minY = Math.min(bounds.minY, y); bounds.maxY = Math.max(bounds.maxY, y);
   }));
+  if (Number.isFinite(bounds.minX)) {
+    bounds.minX = Math.min(bounds.minX, 0); bounds.maxX = Math.max(bounds.maxX, 0);
+    bounds.minY = Math.min(bounds.minY, 0); bounds.maxY = Math.max(bounds.maxY, 0);
+  }
   for (const side of ['left', 'right']) {
     const { context: ctx, width, height } = fitCanvas($(`#${side}FootChart`));
     ctx.clearRect(0, 0, width, height);
@@ -258,7 +298,8 @@ function drawFootMotionCharts(frame = frameForTime($('#analysisVideo').currentTi
       }
     });
     ctx.fillStyle = COLORS.muted; ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'left';
-    ctx.fillText('前后位移 →', 12, height - 10); ctx.fillText('↑ 向上', 12, 17);
+    ctx.fillText('前后位移（腿长） →', 12, height - 10);
+    ctx.fillText($('#footMotionMode').value === 'corrected' ? '↑ 估计离地高度（腿长）' : '↑ 相对髋部高度（腿长）', 12, 17);
     ctx.fillText(`${bounds.minX.toFixed(1)} … ${bounds.maxX.toFixed(1)}`, width - 92, height - 10);
   }
 }
@@ -304,6 +345,7 @@ function updateReview() {
   if (!timeline) return;
   const video = $('#analysisVideo');
   const frame = frameForTime(video.currentTime, video.duration);
+  window.Skeleton3D.setTime(video.currentTime);
   drawSkeleton($('#poseCanvas'), timeline.landmarks[frame], video, false);
   const angles = timeline.angles;
   $('#leftKneeValue').textContent = valueText(angles.left_knee[frame]);
@@ -471,6 +513,11 @@ function createHistoryCard(job) {
   view.addEventListener('click', () => openHistoryResult(job.id)); actions.append(view);
   const rerun = document.createElement('button'); rerun.textContent = '重新分析'; rerun.className = 'rerun'; rerun.disabled = !job.can_reanalyze;
   rerun.addEventListener('click', () => reanalyzeHistory(job.id)); actions.append(rerun);
+  const calibrate = document.createElement('button'); calibrate.textContent = '标定 / 侧面校正'; calibrate.disabled = !job.can_reanalyze;
+  calibrate.addEventListener('click', () => {
+    switchMode('upload'); $('#uploadHero').classList.remove('hidden'); $('#analysisWorkspace').classList.add('hidden');
+    window.Calibration.editHistory(job); $('#calibrationPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }); actions.append(calibrate);
   const remove = document.createElement('button'); remove.textContent = '删除记录'; remove.className = 'delete';
   remove.addEventListener('click', () => deleteHistory(job.id, job.filename || '历史记录', card)); actions.append(remove);
   body.append(actions); card.append(preview, body); return card;

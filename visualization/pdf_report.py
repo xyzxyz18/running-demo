@@ -32,7 +32,7 @@ def _font():
 
 
 def create_pdf_report(path: Path, result: dict, times: np.ndarray, angles: dict,
-                      clearances: dict, motion: dict) -> None:
+                      clearances: dict, motion: dict, corrected_motion: dict = None) -> None:
     font = _font()
     plt.rcParams['font.family'] = font
     plt.rcParams['axes.unicode_minus'] = False
@@ -74,7 +74,7 @@ def create_pdf_report(path: Path, result: dict, times: np.ndarray, angles: dict,
                 axes[2].plot(path_points[:, 0], path_points[:, 1], color=palette[side],
                              label=f'{side.title()} ankle mean', lw=2)
                 axes[2].scatter(path_points[0, 0], path_points[0, 1], color=palette[side], s=20)
-        axes[0].set(ylabel='Angle (deg)', title='Joint angle curves')
+        axes[0].set(ylabel='Angle (deg)', title='Joint angle curves (2D estimates)')
         axes[1].set(xlabel='Time (s)', ylabel='Clearance / leg length', title='Ankle clearance')
         axes[2].set(xlabel='Horizontal / leg length', ylabel='Vertical / leg length',
                     title='Mean ankle trajectory (dot = strike)')
@@ -83,3 +83,29 @@ def create_pdf_report(path: Path, result: dict, times: np.ndarray, angles: dict,
             axis.grid(alpha=.2)
             axis.legend(fontsize=8)
         pdf.savefig(fig); plt.close(fig)
+
+        correction = result.get('view_correction', {})
+        if correction.get('status') in ('available', 'unavailable'):
+            fig, axes = plt.subplots(2, 1, figsize=(8.27, 11.69), constrained_layout=True)
+            if corrected_motion is not None:
+                info = f"估计偏离正侧面 {correction['deviation_from_side_degrees']}°；有效帧 {correction['valid_frame_ratio']:.0%}"
+            else:
+                info = '校正不可用：' + correction.get('reason', '')
+            import textwrap
+            fig.suptitle('单目侧面轨迹估计\n' + '\n'.join(textwrap.wrap(info, 38)), fontsize=12)
+            for axis, data, title in [(axes[0], motion, '原始二维轨迹\n原点为双髋中点'),
+                                      (axes[1], corrected_motion, '估计的侧面轨迹\n原点为髋中点的地面投影')]:
+                if data is not None:
+                    for side in ('left', 'right'):
+                        path_points = np.asarray(data[side]['mean_path'], dtype=float)
+                        if path_points.ndim == 2 and len(path_points):
+                            axis.plot(path_points[:,0], path_points[:,1], color=palette[side], label=side)
+                    if axis.lines:
+                        axis.legend()
+                else:
+                    axis.text(.5, .5, '校正不可用，保留原始轨迹', transform=axis.transAxes, ha='center')
+                axis.axhline(0, color='#999999', lw=.6); axis.axvline(0, color='#999999', lw=.6)
+                axis.set(title=title, xlabel='前后距离 / 腿长', ylabel='高度 / 腿长', aspect='equal')
+                axis.grid(alpha=.2)
+            fig.supxlabel('单目三维与弱透视近似；不是真实三维测量。站立脚踝中心高于地面。', fontsize=8)
+            pdf.savefig(fig); plt.close(fig)

@@ -10,6 +10,9 @@ RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 instal
     libgl1 libglib2.0-0 libx11-6 ffmpeg fonts-noto-cjk && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+# Install the CPU-only wheel before resolving the remaining requirements.
+RUN pip install --no-cache-dir --timeout 60 --retries 3 \
+    --index-url https://download.pytorch.org/whl/cpu "torch>=2.2,<2.9"
 RUN pip install --no-cache-dir --timeout 20 --retries 2 -r requirements.txt || \
     pip install --no-cache-dir --timeout 60 --retries 5 \
       --index-url https://mirrors.aliyun.com/pypi/simple -r requirements.txt

@@ -25,6 +25,16 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"videoInput", response.data)
         self.assertIn(b"exportPdfButton", response.data)
+        self.assertIn(b"skeleton3dCanvas", response.data)
+
+    def test_skeleton3d_artifacts_can_be_downloaded(self):
+        folder = Path(self.temp_dir.name) / '3d-job'; folder.mkdir()
+        web_app.jobs['3d-job'] = {'id': '3d-job', 'state': 'completed'}
+        for name, content in [('skeleton3d.json', b'{"keypoints":[]}'), ('skeleton3d.npz', b'npz')]:
+            (folder / name).write_bytes(content)
+            response = self.client.get(f'/results/3d-job/{name}')
+            self.assertEqual(response.status_code, 200)
+            response.close()
 
     def test_pdf_artifact_can_be_downloaded(self):
         job_id = "pdf-job"
@@ -143,6 +153,43 @@ class WebAppTests(unittest.TestCase):
         response = self.client.post('/api/realtime/pose', data=b'jpeg', content_type='image/jpeg')
         self.assertEqual(response.status_code, 200)
         process.assert_called_once_with(b'jpeg', 'rtmpose')
+
+    @patch.object(web_app.executor, 'submit')
+    def test_calibration_and_reference_survive_reanalysis_and_restart(self, submit):
+        calibration = {'height_cm': 170, 'source': 'reference', 'start_seconds': 0,
+                       'end_seconds': 3, 'marker_seconds': 1.5, 'head': [.5,.1], 'ground': [.5,.9]}
+        response = self.client.post('/api/jobs', data={
+            'video': (io.BytesIO(b'video'), 'run.mp4'),
+            'reference_video': (io.BytesIO(b'standing'), 'stand.mp4'),
+            'calibration': json.dumps(calibration)})
+        self.assertEqual(response.status_code, 202)
+        old_id = response.get_json()['id']
+        web_app.jobs.clear(); web_app.load_existing_jobs()
+        self.assertEqual(web_app.jobs[old_id]['calibration']['height_cm'], 170)
+        reference = self.client.get(f'/results/{old_id}/reference.mp4')
+        self.assertEqual(reference.data, b'standing'); reference.close()
+        rerun = self.client.post(f'/api/jobs/{old_id}/reanalyze').get_json()['id']
+        self.assertEqual(web_app.jobs[rerun]['calibration']['source'], 'reference')
+        self.assertEqual((web_app.JOBS_DIR / rerun / 'reference.mp4').read_bytes(), b'standing')
+        plain = self.client.post(f'/api/jobs/{old_id}/reanalyze', json={'calibration': None}).get_json()['id']
+        self.assertIsNone(web_app.jobs[plain]['calibration'])
+        self.assertEqual(web_app.jobs[plain]['reference_filename'], '')
+
+    @patch.object(web_app.executor, 'submit')
+    def test_bad_calibration_does_not_queue_or_save_upload(self, submit):
+        for setting in ['not-json', json.dumps({'height_cm': 0}), json.dumps([])]:
+            response = self.client.post('/api/jobs', data={
+                'video': (io.BytesIO(b'video'), 'run.mp4'), 'calibration': setting})
+            self.assertEqual(response.status_code, 400)
+        self.assertFalse(web_app.jobs); submit.assert_not_called()
+
+    @patch.object(web_app.executor, 'submit')
+    def test_external_reference_is_required(self, submit):
+        c = {'height_cm': 170, 'source': 'reference', 'start_seconds': 0, 'end_seconds': 3,
+             'head': [.5,.1], 'ground': [.5,.9]}
+        response = self.client.post('/api/jobs', data={
+            'video': (io.BytesIO(b'video'), 'run.mp4'), 'calibration': json.dumps(c)})
+        self.assertEqual(response.status_code, 400); submit.assert_not_called()
 
 
 if __name__ == "__main__":

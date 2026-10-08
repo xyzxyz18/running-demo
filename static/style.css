@@ -36,3 +36,47 @@ main { width:min(1440px,92vw); margin:0 auto; padding:0 0 80px; }
 
 .model-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 0 0 24px; }
 .model-toolbar small { color: #8a9990; }
+
+.calibration-panel { margin: 18px 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.calibration-panel summary { cursor: pointer; color: var(--lime); }
+.calibration-panel p, .calibration-panel small { font-size: 12px; color: var(--muted); line-height: 1.65; }
+.calibration-enable { display: flex; align-items: center; gap: 8px; margin: 16px 0; }
+.calibration-fields { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+.calibration-fields label, #referenceFileLabel { display: grid; gap: 6px; color: #b7c0bc; font-size: 12px; flex: 1; min-width: 120px; }
+.calibration-fields input, .calibration-fields select, .trajectory-toolbar select { width: 100%; padding: 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: #e1e8e3; }
+.calibration-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.calibration-actions button { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #17211e; color: #dbe1de; font-size: 12px; }
+#calibrationVideo { display: block; max-height: 230px; width: 100%; margin: 12px 0; background: #080c09; }
+#calibrationCanvas { display: block; width: 100%; height: auto; background: #080c09; margin: 12px 0; cursor: crosshair; }
+#calibrationCanvas:not([width]) { display: none; }
+.trajectory-toolbar { padding: 12px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--line); font-size: 12px; }
+.trajectory-toolbar select { width: auto; }.trajectory-toolbar p { color: var(--muted); flex: 1; margin: 0; line-height: 1.6; }
+.history-actions { grid-template-columns: repeat(2, 1fr); }
+
+#calibrationPanel { scroll-margin-top: 88px; }
+.skeleton3d-panel { margin-top: 22px; overflow: hidden; }
+.skeleton3d-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 0 22px 16px; }
+.skeleton3d-toolbar button { border: 1px solid #35473b; background: #17251d; color: #dce9df; border-radius: 7px; padding: 8px 12px; cursor: pointer; }
+.skeleton3d-toolbar button:hover { border-color: #c9ff42; }
+.skeleton3d-toolbar .legend { margin-left: auto; }
+#skeleton3dCanvas { display: block; width: 100%; height: clamp(320px, 45vw, 500px); touch-action: none; cursor: grab; }
+#skeleton3dCanvas:active { cursor: grabbing; }
+#skeleton3dCanvas:focus-visible { outline: 2px solid #c9ff42; outline-offset: -3px; }
+#skeleton3dCanvas.hidden { display: none; }
+.comparison-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.comparison-grid .skeleton3d-panel { margin-top: 0; }
+.comparison-grid .panel-head { min-height: 66px; gap: 10px; }
+.comparison-grid #videoStage { aspect-ratio: auto; height: clamp(300px, 32vw, 440px); }
+.comparison-grid #skeleton3dCanvas { height: clamp(300px, 32vw, 440px); }
+.comparison-grid .skeleton3d-toolbar { padding: 12px 16px; gap: 6px; }
+.comparison-grid .skeleton3d-toolbar button { font-size: 12px; padding: 7px 9px; }
+.review-metrics { grid-template-columns: repeat(6, minmax(0,1fr)); margin: 16px 0; }
+.review-metrics .metric-card { min-height: 110px; }
+#sagittal3dPanel .panel-head { gap: 10px; }
+#sagittal3dPanel .panel-head button { font-size: 12px; }
+@media(max-width: 760px) {
+  .comparison-grid { grid-template-columns: 1fr; }
+  .review-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .review-metrics .metric-card { padding: 12px; }
+  .review-metrics .metric-card strong { font-size: 30px; }
+}
