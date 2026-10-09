@@ -4,9 +4,9 @@ from pathlib import Path
 
 import numpy as np
 
-from pose.lifting import H36M_NAMES, lift_pose
-from pose.quality import temporal_support, smooth_supported, diagnostics, display_alignment
-from pose.leg_plane import constrain_leg_planes, side_projection
+from pace.pose.lifting import H36M_NAMES, lift_pose
+from pace.pose.quality import temporal_support, smooth_supported, diagnostics, display_alignment
+from pace.pose.leg_plane import constrain_leg_planes, side_projection
 
 EDGES = [[0,1],[1,2],[2,3],[0,4],[4,5],[5,6],[0,7],[7,8],
          [8,9],[9,10],[8,11],[11,12],[12,13],[8,14],[14,15],[15,16]]

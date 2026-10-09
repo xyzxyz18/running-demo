@@ -2,11 +2,11 @@ import unittest
 
 import numpy as np
 
-from biomechanics.angles import angle_series
-from biomechanics.gait_events import detect_foot_events, detect_ankle_events
-from biomechanics.foot_tracking import leg_length
-from analysis.metrics import compute_metrics
-from analysis.stability import foot_cycle_analysis
+from pace.biomechanics.angles import angle_series
+from pace.biomechanics.gait_events import detect_foot_events, detect_ankle_events
+from pace.biomechanics.foot_tracking import leg_length
+from pace.analysis.metrics import compute_metrics
+from pace.analysis.stability import foot_cycle_analysis
 
 
 class CoreTests(unittest.TestCase):

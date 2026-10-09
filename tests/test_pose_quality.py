@@ -5,9 +5,9 @@ from pathlib import Path
 
 import numpy as np
 
-from pose.quality import fill_for_model, temporal_support, smooth_supported, diagnostics, display_alignment
-from pose.skeleton3d import estimate_skeleton, EDGES
-from analysis.view_correction import correct_trajectory
+from pace.pose.quality import fill_for_model, temporal_support, smooth_supported, diagnostics, display_alignment
+from pace.pose.skeleton3d import estimate_skeleton, EDGES
+from pace.analysis.view_correction import correct_trajectory
 from tests.test_view_correction import scene
 
 

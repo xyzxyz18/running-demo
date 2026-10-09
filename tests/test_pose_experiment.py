@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from analysis.pose_experiment import align_world, smooth_pose, knee_angles, quality_2d
+from tools.pose_experiment import align_world, smooth_pose, knee_angles, quality_2d
 
 
 class PoseExperimentTests(unittest.TestCase):

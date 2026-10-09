@@ -1,4 +1,4 @@
-"""Aggregate gait measurements from pose time series."""
+"""Aggregate gait measurements from pace.pose time series."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from biomechanics.angles import safe_range
+from pace.biomechanics.angles import safe_range
 
 
 def _rounded_finite(value: float, digits: int = 1) -> Optional[float]:

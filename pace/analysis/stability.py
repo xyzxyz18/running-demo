@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from pose.landmarks import LANDMARK_NAMES
+from pace.pose.landmarks import LANDMARK_NAMES
 
 
 SAMPLES_PER_CYCLE = 64

@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from pose.leg_plane import constrain_leg_planes, side_projection
+from pace.pose.leg_plane import constrain_leg_planes, side_projection
 
 
 class LegPlaneTests(unittest.TestCase):

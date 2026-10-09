@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 from pathlib import Path
 import tempfile
 import threading
@@ -10,8 +9,9 @@ import urllib.request
 
 import numpy as np
 
-from pose.backends import COCO_TO_LANDMARKS
-from pose.quality import fill_for_model
+from pace.paths import data_dir
+from pace.pose.backends import COCO_TO_LANDMARKS
+from pace.pose.quality import fill_for_model
 
 MODEL_URL = 'https://dl.fbaipublicfiles.com/video-pose-3d/pretrained_h36m_detectron_coco.bin'
 MODEL_SHA256 = 'd3219e005b50591f694da5cbaf6849f060d6b2cf895864a779f8a992ac63a232'
@@ -24,7 +24,7 @@ _model = None
 
 
 def model_path() -> Path:
-    root = Path(os.environ.get('PACE_DATA_DIR', str(Path(__file__).resolve().parents[1] / 'output')))
+    root = data_dir()
     path = root / 'models' / 'pretrained_h36m_detectron_coco.bin'
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
@@ -56,7 +56,7 @@ def get_model():
         if _model is None:
             try:
                 import torch
-                from pose.vendor.videopose3d import TemporalModel
+                from pace.pose.vendor.videopose3d import TemporalModel
             except ImportError as exc:
                 raise RuntimeError('三维估计需要 PyTorch，请安装 requirements.txt 中的依赖') from exc
             torch.set_num_threads(2)

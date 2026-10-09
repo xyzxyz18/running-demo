@@ -6,8 +6,8 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from pose.leg_plane import constrain_leg_planes, side_projection
-from pose.skeleton3d import EDGES
+from pace.pose.leg_plane import constrain_leg_planes, side_projection
+from pace.pose.skeleton3d import EDGES
 
 
 def main():
@@ -26,11 +26,11 @@ def main():
     motion=None
     if args.landmarks:
         import csv
-        from pose.landmarks import LANDMARK_NAMES
-        from pose.smoothing import preprocess_landmarks
-        from biomechanics.foot_tracking import leg_length
-        from biomechanics.gait_events import detect_ankle_events
-        from analysis.stability import foot_cycle_analysis
+        from pace.pose.landmarks import LANDMARK_NAMES
+        from pace.pose.smoothing import preprocess_landmarks
+        from pace.biomechanics.foot_tracking import leg_length
+        from pace.biomechanics.gait_events import detect_ankle_events
+        from pace.analysis.stability import foot_cycle_analysis
         points=np.full((len(times),33,4),np.nan)
         for row in csv.DictReader(open(args.landmarks)):
             index=int(row['frame_id'])

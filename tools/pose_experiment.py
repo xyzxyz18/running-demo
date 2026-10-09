@@ -2,7 +2,7 @@
 import numpy as np
 from scipy.signal import savgol_filter
 
-from pose.skeleton3d import EDGES
+from pace.pose.skeleton3d import EDGES
 
 
 def smooth_pose(pose, times, window=9):

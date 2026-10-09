@@ -1,8 +1,8 @@
 import unittest
 import numpy as np
 
-from analysis.view_correction import correct_trajectory, validate_calibration
-from analysis.stability import foot_cycle_analysis
+from pace.analysis.view_correction import correct_trajectory, validate_calibration
+from pace.analysis.stability import foot_cycle_analysis
 
 
 def scene(yaw=0, pitch=0, roll=0):

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import app as web_app
+from pace import web as web_app
 
 
 class WebAppTests(unittest.TestCase):

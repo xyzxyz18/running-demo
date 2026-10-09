@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from pose.backends import COCO_TO_LANDMARKS, coco_landmarks, validate_model
+from pace.pose.backends import COCO_TO_LANDMARKS, coco_landmarks, validate_model
 
 
 class ModelMappingTests(unittest.TestCase):

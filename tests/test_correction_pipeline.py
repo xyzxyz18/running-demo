@@ -5,8 +5,8 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
-import main
-from config import AnalysisConfig
+from pace import pipeline as main
+from pace.config import AnalysisConfig
 from tests.test_view_correction import scene
 
 
@@ -52,3 +52,20 @@ class CorrectionPipelineTests(unittest.TestCase):
                 self.assertEqual(data['left_trajectory'].shape, (121,2))
                 self.assertGreater(data['left_trajectory'][0,1],0)
             json.dumps(result, allow_nan=False)
+
+    def test_3d_runs_without_calibration_and_failure_keeps_2d(self):
+        p, _, t, *_ = scene()
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); source = root / 'source.mp4'; source.write_bytes(b'placeholder')
+            (root / 'skeleton3d.json').write_text('stale')
+            with patch.object(main, 'extract_pose', return_value=(p, 30, 640, 360, t)), \
+                 patch.object(main, 'estimate_skeleton', side_effect=RuntimeError('test 3d failure')) as estimator, \
+                 patch.object(main, 'save_annotated_video'), patch.object(main, 'create_browser_video'), \
+                 patch.object(main, 'create_report'), patch.object(main, 'create_pdf_report'):
+                result = main.analyze(source, root, AnalysisConfig())
+            estimator.assert_called_once()
+            self.assertEqual(result['view_correction']['status'], 'not_requested')
+            self.assertEqual(result['skeleton3d']['status'], 'unavailable')
+            self.assertIn('foot_motion', result)
+            self.assertTrue((root / 'timeline.json').exists())
+            self.assertFalse((root / 'skeleton3d.json').exists())

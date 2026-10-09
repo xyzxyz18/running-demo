@@ -1,7 +1,7 @@
 """Run the reproducible RTMPose -> VideoPose3D experiment matrix.
 
 Outputs A raw, B smoothed, C rigid-world, and D world+smoothed poses plus
-quality reports. Use ``python run_pipeline.py --input video.mp4 --output outputs``.
+quality reports. Use ``python -m tools.run_pipeline --input video.mp4 --output outputs``.
 """
 from __future__ import annotations
 import argparse, json
@@ -10,11 +10,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from main import extract_pose
-from pose.lifting import lift_pose, H36M_NAMES
-from analysis.pose_experiment import metrics, quality_2d, smooth_pose, align_world
-from visualization.video_overlay import draw_pose
-from pose.skeleton3d import EDGES
+from pace.pipeline import extract_pose
+from pace.pose.lifting import lift_pose, H36M_NAMES
+from tools.pose_experiment import metrics, quality_2d, smooth_pose, align_world
+from pace.visualization.video_overlay import draw_pose
+from pace.pose.skeleton3d import EDGES
 
 
 def save_json_frames(raw, directory):
@@ -90,7 +90,7 @@ def save_plots(output,poses,times):
             axes[row,column].set_title(f'{side} ankle {axis} (model units)');axes[row,column].grid(alpha=.2)
     axes[0,0].legend(fontsize=7);fig.tight_layout();fig.savefig(output/'ankle_xyz.png');plt.close(fig)
     fig,axes=plt.subplots(1,2,figsize=(12,4))
-    from analysis.pose_experiment import knee_angles
+    from tools.pose_experiment import knee_angles
     for ax,side in zip(axes,['left','right']):
         for name,pose in poses.items():ax.plot(times,knee_angles(pose,side),label=name)
         ax.set_title(f'{side} knee angle');ax.legend(fontsize=7);ax.grid(alpha=.2)

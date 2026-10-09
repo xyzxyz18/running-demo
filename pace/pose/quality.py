@@ -2,7 +2,7 @@
 import numpy as np
 from scipy.signal import savgol_filter
 
-from pose.backends import COCO_TO_LANDMARKS
+from pace.pose.backends import COCO_TO_LANDMARKS
 
 
 def display_alignment(pose, points, aspect):

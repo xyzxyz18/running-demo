@@ -1,7 +1,7 @@
 """Local running-pose analysis CLI using RTMPose.
 
 Usage:
-    python main.py input/test.mp4 --output output
+    python -m pace.pipeline input/test.mp4 --output output
 """
 
 from __future__ import annotations
@@ -18,23 +18,23 @@ from typing import Dict, List, Tuple
 import cv2
 import numpy as np
 
-from analysis.feedback import build_feedback
-from analysis.metrics import compute_metrics
-from analysis.stability import foot_cycle_analysis
-from analysis.view_correction import correct_trajectory, validate_calibration, LIMITATIONS
-from pose.lifting import lift_pose, H36M_NAMES
-from pose.skeleton3d import estimate_skeleton, LIMITATION as SKELETON3D_LIMITATION
-from pose.quality import temporal_support, smooth_supported
-from biomechanics.angles import angle_series
-from biomechanics.foot_tracking import body_scale, leg_length
-from biomechanics.gait_events import FootEvents, detect_ankle_events
-from config import AnalysisConfig
-from pose.landmarks import LANDMARK_NAMES
-from pose.backends import MODEL_NAMES, create_estimator, validate_model
-from pose.smoothing import preprocess_landmarks
-from visualization.plots import create_report
-from visualization.video_overlay import draw_panel, draw_pose
-from visualization.pdf_report import create_pdf_report
+from pace.analysis.feedback import build_feedback
+from pace.analysis.metrics import compute_metrics
+from pace.analysis.stability import foot_cycle_analysis
+from pace.analysis.view_correction import correct_trajectory, validate_calibration, LIMITATIONS
+from pace.pose.lifting import lift_pose, H36M_NAMES
+from pace.pose.skeleton3d import estimate_skeleton, LIMITATION as SKELETON3D_LIMITATION
+from pace.pose.quality import temporal_support, smooth_supported
+from pace.biomechanics.angles import angle_series
+from pace.biomechanics.foot_tracking import body_scale, leg_length
+from pace.biomechanics.gait_events import FootEvents, detect_ankle_events
+from pace.config import AnalysisConfig
+from pace.pose.landmarks import LANDMARK_NAMES
+from pace.pose.backends import MODEL_NAMES, create_estimator, validate_model
+from pace.pose.smoothing import preprocess_landmarks
+from pace.visualization.plots import create_report
+from pace.visualization.video_overlay import draw_panel, draw_pose
+from pace.visualization.pdf_report import create_pdf_report
 
 
 IDX = {name: i for i, name in enumerate(LANDMARK_NAMES)}

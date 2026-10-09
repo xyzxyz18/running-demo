@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from config import AnalysisConfig
+from pace.config import AnalysisConfig
 
 
 def build_feedback(metrics: Dict[str, object], config: AnalysisConfig) -> List[str]:

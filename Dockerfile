@@ -19,13 +19,8 @@ RUN pip install --no-cache-dir --timeout 20 --retries 2 -r requirements.txt || \
 
 ENV XDG_CACHE_HOME=/data/.cache
 
-COPY app.py main.py config.py ./
-COPY analysis ./analysis
-COPY biomechanics ./biomechanics
-COPY pose ./pose
-COPY visualization ./visualization
-COPY static ./static
-COPY templates ./templates
+COPY app.py ./
+COPY pace ./pace
 RUN useradd --uid 10001 --create-home pace && mkdir -p /data /tmp/pace-matplotlib \
     && chown -R pace:pace /data /tmp/pace-matplotlib
 

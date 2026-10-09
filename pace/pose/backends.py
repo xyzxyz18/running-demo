@@ -5,7 +5,7 @@ import threading
 
 import numpy as np
 
-from pose.landmarks import PoseFrame
+from pace.pose.landmarks import PoseFrame
 
 MODEL_NAMES = {"rtmpose": "RTMPose"}
 # COCO 17 -> shared 33-slot layout. Missing toes, heels, hands and face detail stay missing.

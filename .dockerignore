@@ -1,8 +1,14 @@
+.git
 .venv
+.env
 output
-example
+outputs
+docs
+tools
 tests
 __pycache__
+.pytest_cache
+.cache
+*_analysis
 *.pyc
 .DS_Store
-.git

@@ -1,7 +1,15 @@
+# Local environment and configuration
 .venv/
+.env
+
+# Generated data and model weights (never commit)
+/output/
+/outputs/
+*_analysis/
+.cache/
+
+# Python/test and OS caches
 __pycache__/
 *.py[cod]
-output/
-*_analysis/
+.pytest_cache/
 .DS_Store
-.cache/
